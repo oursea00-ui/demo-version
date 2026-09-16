@@ -1,14 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
-import { formatWon, notices, type Notice } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
+import {
+  closestModelIndex,
+  formatRate,
+  formatWon,
+  MODELS,
+  results,
+  type NoticeResult,
+} from "@/lib/mock-data";
 import { FilterBar, useNoticeFilters } from "@/components/filter-bar";
 import { EmptyRow, PageShell, PageTitle } from "@/components/page-shell";
+import { ReasonDialog } from "@/components/reason-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -18,137 +25,112 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const getNotice = (n: Notice) => n;
+const getNotice = (r: NoticeResult) => r.notice;
 
-export default function Home() {
-  const router = useRouter();
-  const { filtered, ...filterProps } = useNoticeFilters(notices, getNotice);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  const allChecked = filtered.length > 0 && filtered.every((n) => selected.has(n.id));
-  const someChecked = !allChecked && filtered.some((n) => selected.has(n.id));
-
-  const toggleAll = (checked: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const n of filtered) {
-        if (checked) next.add(n.id);
-        else next.delete(n.id);
-      }
-      return next;
-    });
-
-  const toggleOne = (id: string, checked: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-  const startTest = () => {
-    const ids = notices.filter((n) => selected.has(n.id)).map((n) => n.id);
-    router.push(`/test/result?ids=${ids.join(",")}`);
-  };
+export default function HistoryPage() {
+  const { filtered, ...filterProps } = useNoticeFilters(results, getNotice);
+  const [active, setActive] = useState<NoticeResult | null>(null);
+  const openedCount = filtered.filter((r) => r.actualRate !== null).length;
 
   return (
-    <>
-      <PageShell className={selected.size > 0 ? "pb-40" : undefined}>
-        <PageTitle>돈방석 데모 버전</PageTitle>
+    <PageShell>
+      <PageTitle>전체 내역</PageTitle>
 
-        <div className="mt-11 flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-2xl font-semibold">
-            미개찰 공고 <span className="tabular-nums">{filtered.length}</span>
-          </h2>
-          <FilterBar {...filterProps} />
-        </div>
+      <div className="mt-11 flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-2xl font-semibold">
+          총 <span className="tabular-nums">{filtered.length}</span>건
+          <span className="ml-3 text-base font-normal text-muted-foreground">
+            개찰 완료 <span className="tabular-nums">{openedCount}</span>건
+          </span>
+          <span className="ml-4 inline-flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
+            <span className="inline-block size-3 rounded-sm bg-primary/15 ring-1 ring-primary/40" />
+            실제 예가율과 가장 유사한 모델
+          </span>
+        </h2>
+        <FilterBar {...filterProps} />
+      </div>
 
-        <div className="mt-4 overflow-hidden rounded-xl border">
-          <Table className="text-base">
-            <TableHeader className="bg-muted/60">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="h-14 w-20 pl-8">
-                  <label className="flex items-center gap-4">
-                    <Checkbox
-                      checked={allChecked}
-                      indeterminate={someChecked}
-                      onCheckedChange={toggleAll}
-                      className="size-6 rounded-md bg-background [&_svg]:size-4!"
-                      aria-label="전체 선택"
-                    />
-                    <span className="font-medium text-muted-foreground">전체</span>
-                  </label>
+      <div className="mt-4 overflow-hidden rounded-xl border">
+        <Table className="text-base">
+          <TableHeader className="bg-muted/60">
+            <TableRow className="hover:bg-transparent">
+              <TableHead rowSpan={2} className="pl-8">공고번호</TableHead>
+              <TableHead rowSpan={2}>용역명</TableHead>
+              <TableHead rowSpan={2} className="text-right">기초금액</TableHead>
+              <TableHead colSpan={MODELS.length} className="h-10 border-x text-center">
+                모델별 예측 예가율
+              </TableHead>
+              <TableHead rowSpan={2} className="text-right">실제 예가율</TableHead>
+              <TableHead rowSpan={2} className="text-center">개찰일</TableHead>
+              <TableHead rowSpan={2} className="w-28 pr-8 text-right">근거</TableHead>
+            </TableRow>
+            <TableRow className="hover:bg-transparent">
+              {MODELS.map((m, i) => (
+                <TableHead
+                  key={m}
+                  className={cn("h-10 text-right", i === 0 && "border-l", i === MODELS.length - 1 && "border-r")}
+                >
+                  {m}
                 </TableHead>
-                <TableHead>공고번호</TableHead>
-                <TableHead>용역명</TableHead>
-                <TableHead>용역</TableHead>
-                <TableHead>발주처</TableHead>
-                <TableHead>업종</TableHead>
-                <TableHead>지역</TableHead>
-                <TableHead className="text-right">기초금액</TableHead>
-                <TableHead className="pr-8 text-right">개찰일</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((n) => {
-                const checked = selected.has(n.id);
-                return (
-                  <TableRow
-                    key={n.id}
-                    data-state={checked ? "selected" : undefined}
-                    className="h-[50px] cursor-pointer"
-                    onClick={() => toggleOne(n.id, !checked)}
-                  >
-                    <TableCell className="pl-8" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => toggleOne(n.id, v)}
-                        className="size-6 rounded-md [&_svg]:size-4!"
-                        aria-label={`${n.title} 선택`}
-                      />
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((r) => {
+              const closest = closestModelIndex(r);
+              const opened = r.actualRate !== null;
+              return (
+                <TableRow key={r.notice.id} className="h-[60px]">
+                  <TableCell className="pl-8 font-mono text-sm text-muted-foreground">{r.notice.no}</TableCell>
+                  <TableCell className="max-w-[360px]">
+                    <div className="truncate font-medium">{r.notice.title}</div>
+                    <div className="truncate text-sm text-muted-foreground">
+                      {r.notice.agency} · {r.notice.region1} {r.notice.region2}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{formatWon(r.notice.basePrice)}</TableCell>
+                  {r.modelRates.map((rate, i) => (
+                    <TableCell key={MODELS[i]} className="text-right tabular-nums">
+                      <span
+                        className={cn(
+                          "inline-block rounded-md px-2 py-1",
+                          i === closest && "bg-primary/15 font-bold text-primary"
+                        )}
+                        title={i === closest ? "실제 예가율과 가장 유사한 모델" : undefined}
+                      >
+                        {formatRate(rate)}
+                      </span>
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">{n.no}</TableCell>
-                    <TableCell className="max-w-[420px] truncate font-medium">{n.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{n.category}</Badge>
-                    </TableCell>
-                    <TableCell>{n.agency}</TableCell>
-                    <TableCell>
-                      {n.industry1} · {n.industry2}
-                    </TableCell>
-                    <TableCell>
-                      {n.region1} {n.region2}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatWon(n.basePrice)}</TableCell>
-                    <TableCell className="pr-8 text-right tabular-nums">{n.openDate}</TableCell>
-                  </TableRow>
-                );
-              })}
-              {filtered.length === 0 && <EmptyRow colSpan={9}>조건에 맞는 미개찰 공고가 없어요.</EmptyRow>}
-            </TableBody>
-          </Table>
-        </div>
-      </PageShell>
+                  ))}
+                  <TableCell className="text-right font-semibold tabular-nums">{formatRate(r.actualRate)}</TableCell>
+                  <TableCell className="text-center">
+                    <div className="tabular-nums">{r.notice.openDate}</div>
+                    {opened ? (
+                      <Badge variant="secondary" className="mt-1">개찰 완료</Badge>
+                    ) : (
+                      <Badge variant="outline" className="mt-1">개찰 전</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="pr-8 text-right">
+                    {opened ? (
+                      <Button variant="outline" size="sm" onClick={() => setActive(r)}>
+                        근거
+                      </Button>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {filtered.length === 0 && (
+              <EmptyRow colSpan={6 + MODELS.length}>조건에 맞는 공고가 없어요.</EmptyRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      {selected.size > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur">
-          <div className="mx-auto flex h-[84px] w-full max-w-[1576px] items-center justify-end gap-3 px-6">
-            <span className="mr-auto text-base text-muted-foreground">
-              <strong className="font-semibold text-foreground tabular-nums">{selected.size}</strong>건 선택됨
-            </span>
-            <Button
-              variant="secondary"
-              className="h-[60px] rounded-full px-6 text-lg"
-              onClick={() => setSelected(new Set())}
-            >
-              선택 취소
-            </Button>
-            <Button className="h-[60px] rounded-full px-6 text-lg" onClick={startTest}>
-              예가율 테스트하기
-            </Button>
-          </div>
-        </div>
-      )}
-    </>
+      <ReasonDialog result={active} onOpenChange={(open) => !open && setActive(null)} />
+    </PageShell>
   );
 }
